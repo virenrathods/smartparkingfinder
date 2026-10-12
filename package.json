@@ -1,0 +1,20 @@
+{
+  "name": "smart-parking-finder-root",
+  "version": "1.0.0",
+  "description": "Smart Parking Finder - Full Stack Minor Project",
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "migrate": "cd server && npm run migrate",
+    "install:all": "cd server && npm install && cd ../client && npm install"
+  },
+  "keywords": [
+    "parking",
+    "react",
+    "express",
+    "mysql",
+    "qr-code"
+  ],
+  "author": "Viren Rathod",
+  "license": "ISC"
+}
