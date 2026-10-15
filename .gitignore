@@ -9,6 +9,10 @@ node_modules/
 */.env
 */.env.*
 !*/.env.example
+*.pem
+*.crt
+*.key
+server/*.pem
 
 # Local Database Files & Runtime SQLite storage
 *.db
