@@ -97,31 +97,33 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Quick Demo Fill Buttons for Examiner/Evaluation */}
-          <div className="mt-6 pt-6 border-t border-slate-800/80 space-y-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block text-center">
-              Quick Fill for Evaluation
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <button
-                type="button"
-                onClick={() => fillCredentials('admin@parkingfinder.com', 'Admin@123')}
-                className="p-2 rounded-xl bg-indigo-950/40 border border-indigo-800/50 hover:bg-indigo-900/40 text-indigo-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>Admin Demo</span>
-              </button>
+          {/* Quick Demo Fill Buttons for Examiner/Local Evaluation (Hidden in Production) */}
+          {(import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_LOGIN === 'true') && (
+            <div className="mt-6 pt-6 border-t border-slate-800/80 space-y-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block text-center">
+                Quick Fill for Evaluation (Dev Mode)
+              </span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => fillCredentials('admin@parkingfinder.com', 'Admin@123')}
+                  className="p-2 rounded-xl bg-indigo-950/40 border border-indigo-800/50 hover:bg-indigo-900/40 text-indigo-300 font-medium flex items-center justify-center gap-1.5 transition"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Admin Demo</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => fillCredentials('user@parkingfinder.com', 'User@123')}
-                className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/40 text-emerald-300 font-medium flex items-center justify-center gap-1.5 transition"
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>User Demo</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => fillCredentials('user@parkingfinder.com', 'User@123')}
+                  className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/40 text-emerald-300 font-medium flex items-center justify-center gap-1.5 transition"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>User Demo</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="mt-6 text-center text-xs text-slate-400">
             Don't have an account?{' '}

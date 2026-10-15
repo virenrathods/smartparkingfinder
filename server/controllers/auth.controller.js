@@ -2,8 +2,34 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
 
+const INSECURE_JWT_SECRETS = new Set([
+  'super_secret_jwt_key_diploma_smart_parking_2026',
+  'secret',
+  'jwt_secret',
+  'changeme',
+  '12345678',
+  'replace_with_a_long_random_secret',
+  'your_jwt_secret_here',
+  'default_secret',
+  'smartparking'
+]);
+
+function getValidatedJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    if (!secret || INSECURE_JWT_SECRETS.has(secret.trim().toLowerCase()) || secret.length < 32) {
+      throw new Error('Fatal Security Blocker: In production mode, you must set a strong, unique JWT_SECRET (minimum 32 characters, non-default).');
+    }
+    return secret;
+  }
+
+  return secret || 'super_secret_jwt_key_diploma_smart_parking_2026';
+}
+
 function generateToken(user) {
-  const secret = process.env.JWT_SECRET || 'super_secret_jwt_key_diploma_smart_parking_2026';
+  const secret = getValidatedJwtSecret();
   return jwt.sign(
     {
       id: user.id,
@@ -18,7 +44,7 @@ function generateToken(user) {
 // POST /api/auth/register
 async function register(req, res, next) {
   try {
-    const { full_name, email, password, phone } = req.body;
+    const { full_name, email, password, phone, role } = req.body;
 
     if (!full_name || !email || !password) {
       return res.status(400).json({
@@ -31,6 +57,14 @@ async function register(req, res, next) {
       return res.status(400).json({
         success: false,
         message: 'Password must be at least 6 characters long.'
+      });
+    }
+
+    // Explicitly prohibit self-registration with administrator privileges
+    if (role && role.toLowerCase().trim() === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Security Violation: Self-registration with administrator privileges is prohibited.'
       });
     }
 
@@ -47,7 +81,7 @@ async function register(req, res, next) {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Default role is 'user'
+    // Enforce role strictly as 'user'
     const [result] = await db.execute(
       'INSERT INTO users (full_name, email, password_hash, phone, role) VALUES (?, ?, ?, ?, ?)',
       [full_name.trim(), email.toLowerCase().trim(), passwordHash, phone || null, 'user']
@@ -221,5 +255,7 @@ module.exports = {
   register,
   login,
   getMe,
-  updateProfile
+  updateProfile,
+  generateToken,
+  getValidatedJwtSecret
 };

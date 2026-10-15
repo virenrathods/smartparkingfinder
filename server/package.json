@@ -5,7 +5,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "migrate": "node database/migrate.js"
+    "migrate": "node database/migrate.js",
+    "bootstrap:admin": "node database/bootstrap-admin.js",
+    "test:security": "node test-security.js"
   },
   "keywords": [],
   "author": "",

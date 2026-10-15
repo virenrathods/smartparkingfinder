@@ -9,6 +9,7 @@ const locationRoutes = require('./routes/location.routes');
 const slotRoutes = require('./routes/slot.routes');
 const bookingRoutes = require('./routes/booking.routes');
 const adminRoutes = require('./routes/admin.routes');
+const { getValidatedJwtSecret } = require('./controllers/auth.controller');
 const { errorHandler } = require('./middleware/error.middleware');
 
 const app = express();
@@ -83,13 +84,8 @@ const { startReminderService, stopReminderService } = require('./services/remind
 // Server Startup
 async function startServer() {
   try {
-    // Security guard for production deployments
-    if (process.env.NODE_ENV === 'production') {
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret || jwtSecret === 'super_secret_jwt_key_diploma_smart_parking_2026') {
-        throw new Error('Fatal Security Blocker: In production mode, you must set a strong, unique JWT_SECRET in your hosting dashboard.');
-      }
-    }
+    // Security guard for production deployments: validate JWT secret strength
+    getValidatedJwtSecret();
 
     await db.initDb();
     const clientType = db.getClientType().toUpperCase();

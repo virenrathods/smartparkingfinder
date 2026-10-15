@@ -64,12 +64,16 @@ Smart Parking Finder uses InnoDB transactions and row-level pessimistic locks (`
    - **User** (e.g. `avnadmin`)
    - **Password** (auto-generated secret)
    - **Database Name** (default: `defaultdb`)
-   - **SSL**: Enabled (`DB_SSL=true`)
+   - **CA Certificate:** Download `ca.pem` from the Aiven console.
+4. **Configuring Aiven CA Certificate on Render:**
+   - **Method A (Environment Variable):** Open the downloaded `ca.pem` in a text editor, copy the entire block including `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----`, and paste it into the `DB_CA_CERT` environment variable in Render.
+   - **Method B (Render Secret File):** In Render Dashboard under **Environment** > **Secret Files**, upload `ca.pem` as `/etc/secrets/ca.pem` and set `DB_CA_CERT_PATH=/etc/secrets/ca.pem`.
+   - Certificate verification is enforced by default (`DB_SSL_REJECT_UNAUTHORIZED=true`).
 
 ### Option 2: TiDB Serverless (Free Forever MySQL 8.0 Protocol)
 1. Sign up at [https://tidbcloud.com](https://tidbcloud.com).
 2. Create a **Serverless Cluster** (Free).
-3. Under **Connect**, select **General** / **Node.js** and copy your credentials.
+3. Under **Connect**, select **General** / **Node.js** and copy your credentials. (TiDB uses public root CAs, so `DB_CA_CERT` can be left blank).
 
 ---
 
@@ -93,15 +97,19 @@ Under the **Environment** tab, add the following variables:
 
 | Key | Value / Example | Notes |
 | :--- | :--- | :--- |
-| `NODE_ENV` | `production` | Enables production security mode & error masking |
+| `NODE_ENV` | `production` | Enables production security mode, error masking, and disables demo accounts |
 | `PORT` | `5000` | Express internal port (Render maps to port 443 automatically) |
 | `DB_CLIENT` | `mysql` | Strictly enforces MySQL persistence in production |
 | `DB_HOST` | `mysql-xxxx.aivencloud.com` | From your MySQL provider |
-| `DB_PORT` | `3306` (or Aiven custom port) | Standard MySQL port |
+| `DB_PORT` | `3306` (or Aiven custom port) | Database port |
 | `DB_USER` | `avnadmin` / `your_user` | Database user |
 | `DB_PASSWORD` | `your_secret_password` | Database password |
 | `DB_NAME` | `defaultdb` / `smart_parking_db` | Target database |
 | `DB_SSL` | `true` | Required for hosted cloud MySQL |
+| `DB_SSL_REJECT_UNAUTHORIZED` | `true` | Enforces TLS certificate verification |
+| `DB_CA_CERT` | *(Paste Aiven ca.pem contents)* | Required for Aiven MySQL or private DB CAs |
+| `INITIAL_ADMIN_EMAIL` | `admin@yourcollege.edu` | **Production Initial Administrator Email** |
+| `INITIAL_ADMIN_PASSWORD` | *(Strong 12+ char password)* | **Strong Admin Password** (known demo passwords like `Admin@123` are rejected) |
 | `JWT_SECRET` | *(Generate a 32+ character random string)* | **Mandatory** in production for signing session tokens |
 | `CORS_ORIGIN` | `https://your-frontend-app.vercel.app` | Updated in Step E after Vercel deployment |
 | `APP_BASE_URL` | `https://your-frontend-app.vercel.app` | Used in email pass links |

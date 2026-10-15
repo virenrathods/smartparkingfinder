@@ -1,19 +1,12 @@
 const path = require('path');
 const fs = require('fs');
 const db = require('../config/db');
-
-function cleanSqlStatements(rawSql) {
-  return rawSql
-    .split(';')
-    .map(statement => {
-      // Strip line comments
-      const cleaned = statement
-        .replace(/--.*$/gm, '')
-        .trim();
-      return cleaned;
-    })
-    .filter(statement => statement.length > 0);
-}
+const {
+  bootstrapAdmin,
+  seedInfrastructure,
+  seedDevelopmentUsers,
+  cleanSqlStatements
+} = require('./bootstrap');
 
 async function runMigration() {
   console.log('🔄 Initializing database migration...');
@@ -22,6 +15,7 @@ async function runMigration() {
   const clientType = db.getClientType();
   console.log(`ℹ️  Active Database Engine: ${clientType.toUpperCase()}`);
 
+  // 1. Apply Schema DDL (For MySQL databases)
   if (clientType === 'mysql') {
     const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
     const statements = cleanSqlStatements(schemaSql);
@@ -30,33 +24,60 @@ async function runMigration() {
     for (const statement of statements) {
       await db.execute(statement);
     }
-    console.log('✅ MySQL schema applied successfully.');
+    console.log('✅ MySQL schema verified / applied successfully.');
   }
 
-  // Check if users exist to determine if seed is needed
-  const [existingUsers] = await db.execute('SELECT COUNT(*) as count FROM users');
-  const userCount = existingUsers[0].count;
-
-  if (userCount > 0) {
-    console.log(`ℹ️  Database already contains ${userCount} users. Skipping seed.`);
-    return;
+  // 2. Seed Facility Infrastructure (Locations & Slots)
+  // Safe for all environments; only seeds if table is empty
+  const infraResult = await seedInfrastructure(db);
+  if (!infraResult.seeded) {
+    console.log(`ℹ️  Parking facilities already populated (${infraResult.count} locations).`);
   }
 
-  console.log('🌱 Seeding database with realistic parking locations, slots, and test accounts...');
-  const seedSql = fs.readFileSync(path.join(__dirname, 'seed.sql'), 'utf-8');
-  const seedStatements = cleanSqlStatements(seedSql);
+  // 3. User & Administrator Handling by Environment
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  for (const statement of seedStatements) {
-    await db.execute(statement);
+  if (isProduction) {
+    console.log('🛡️  Production mode active: Automatic demo user seeding is DISABLED.');
+
+    const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
+    const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+    const adminName = process.env.INITIAL_ADMIN_NAME || 'Production Administrator';
+
+    if (adminEmail && adminPassword) {
+      try {
+        const bootstrapResult = await bootstrapAdmin(db, {
+          email: adminEmail,
+          password: adminPassword,
+          fullName: adminName
+        });
+
+        if (bootstrapResult.created) {
+          console.log(`✅ [Admin Bootstrap] Initial production administrator created for ${bootstrapResult.email}.`);
+        } else {
+          console.log(`ℹ️  [Admin Bootstrap] ${bootstrapResult.message}`);
+        }
+      } catch (err) {
+        console.error(`❌ [Admin Bootstrap Error] ${err.message}`);
+        throw err;
+      }
+    } else {
+      const [admins] = await db.execute("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+      const adminCount = admins[0].count;
+      if (adminCount === 0) {
+        console.warn('⚠️  [Production Warning] No administrator account exists yet.');
+        console.warn('ℹ️  Set INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD in hosting dashboard or run: npm run bootstrap:admin');
+      } else {
+        console.log(`ℹ️  Database contains ${adminCount} registered administrator(s).`);
+      }
+    }
+  } else {
+    // Development mode: seed development demo accounts if no users exist
+    const devSeedResult = await seedDevelopmentUsers(db);
+    if (!devSeedResult.seeded) {
+      console.log('ℹ️  User table already populated. Skipping demo user seeding.');
+    }
   }
-
-  const [verifyUsers] = await db.execute('SELECT COUNT(*) as count FROM users');
-  const [verifyLocs] = await db.execute('SELECT COUNT(*) as count FROM parking_locations');
-  const [verifySlots] = await db.execute('SELECT COUNT(*) as count FROM parking_slots');
-
-  console.log(`✅ Database seeded successfully! (${verifyUsers[0].count} users, ${verifyLocs[0].count} locations, ${verifySlots[0].count} slots)`);
-  console.log('   - Admin Login: admin@parkingfinder.com / Admin@123');
-  console.log('   - User Login:  user@parkingfinder.com / User@123');
 }
 
 if (require.main === module) {

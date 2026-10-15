@@ -11,6 +11,76 @@ const dbPath = path.join(dbDir, 'smart_parking.db');
 // Simple async mutex for serializing SQLite transactions
 let sqliteTxMutex = Promise.resolve();
 
+/**
+ * Configure TLS/SSL parameters for MySQL connections.
+ * Enforces TLS certificate verification by default in production.
+ * Supports provider CA certificates via DB_CA_CERT (inline PEM / base64) or DB_CA_CERT_PATH.
+ */
+function resolveSslConfig(isProduction = false) {
+  const enableSsl = process.env.DB_SSL === 'true' ||
+                    process.env.DB_SSL === '1' ||
+                    (isProduction && process.env.DB_SSL !== 'false');
+
+  if (!enableSsl) {
+    return null;
+  }
+
+  let caCert = null;
+  if (process.env.DB_CA_CERT) {
+    let rawCert = process.env.DB_CA_CERT.trim();
+    if (rawCert.includes('\\n')) {
+      rawCert = rawCert.replace(/\\n/g, '\n');
+    }
+    if (rawCert.includes('-----BEGIN CERTIFICATE-----')) {
+      caCert = rawCert;
+    } else {
+      try {
+        const decoded = Buffer.from(rawCert, 'base64').toString('utf-8');
+        if (decoded.includes('-----BEGIN CERTIFICATE-----')) {
+          caCert = decoded;
+        } else {
+          caCert = rawCert;
+        }
+      } catch (_) {
+        caCert = rawCert;
+      }
+    }
+  } else if (process.env.DB_CA_CERT_PATH) {
+    const certPath = path.isAbsolute(process.env.DB_CA_CERT_PATH)
+      ? process.env.DB_CA_CERT_PATH
+      : path.resolve(process.cwd(), process.env.DB_CA_CERT_PATH);
+
+    if (fs.existsSync(certPath)) {
+      caCert = fs.readFileSync(certPath, 'utf-8');
+    } else {
+      throw new Error(`Database CA certificate file not found at: ${process.env.DB_CA_CERT_PATH}`);
+    }
+  }
+
+  // In production, rejectUnauthorized MUST default to true.
+  // Verification is only bypassed if explicitly instructed by setting DB_SSL_REJECT_UNAUTHORIZED='false'.
+  const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+
+  if (!rejectUnauthorized) {
+    console.warn('⚠️  [Database Security Notice] DB_SSL_REJECT_UNAUTHORIZED is explicitly set to "false". TLS certificate verification is bypassed.');
+  }
+
+  const ssl = {
+    rejectUnauthorized,
+    minVersion: 'TLSv1.2'
+  };
+
+  if (caCert) {
+    ssl.ca = caCert;
+  }
+
+  return {
+    ssl,
+    rejectUnauthorized,
+    hasCustomCa: Boolean(caCert)
+  };
+}
+
 // Initialize Database Connection
 async function initDb() {
   const preferredClient = process.env.DB_CLIENT || (process.env.NODE_ENV === 'production' ? 'mysql' : 'auto');
@@ -50,13 +120,10 @@ async function initDb() {
         };
       }
 
-      // Configure SSL for hosted cloud MySQL providers
-      const enableSsl = process.env.DB_SSL === 'true' ||
-                        process.env.DB_SSL === '1' ||
-                        (isProduction && process.env.DB_SSL !== 'false');
-
-      if (enableSsl) {
-        poolConfig.ssl = { rejectUnauthorized: false };
+      // Configure TLS/SSL for hosted cloud MySQL providers
+      const sslInfo = resolveSslConfig(isProduction);
+      if (sslInfo) {
+        poolConfig.ssl = sslInfo.ssl;
       }
 
       const testPool = mysql.createPool(poolConfig);
@@ -65,7 +132,11 @@ async function initDb() {
       await conn.ping();
       conn.release();
 
-      console.log(`✅ Connected to MySQL database at ${poolConfig.host}:${poolConfig.port}/${poolConfig.database} (SSL: ${enableSsl ? 'Active' : 'Disabled'})`);
+      const tlsStatus = sslInfo
+        ? (sslInfo.rejectUnauthorized ? 'Verified TLS' : 'Unverified TLS (Insecure)')
+        : 'Disabled';
+      const caStatus = sslInfo && sslInfo.hasCustomCa ? ' [Custom CA loaded]' : '';
+      console.log(`✅ Connected to MySQL database at ${poolConfig.host}:${poolConfig.port}/${poolConfig.database} (SSL: ${tlsStatus}${caStatus})`);
       pool = testPool;
       activeClient = 'mysql';
       return;
@@ -326,5 +397,6 @@ module.exports = {
   query,
   getConnection,
   getClientType: () => activeClient,
-  getRawSqlite: () => sqliteDb
+  getRawSqlite: () => sqliteDb,
+  resolveSslConfig
 };
