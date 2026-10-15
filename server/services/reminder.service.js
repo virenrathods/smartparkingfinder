@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const emailService = require('./email.service');
+const { formatSqlDatetime } = require('../utils/helpers');
 
 let isRunning = false;
 let intervalId = null;
@@ -27,12 +28,10 @@ async function processReminders(referenceTime = new Date()) {
 
   isRunning = true;
   const now = referenceTime instanceof Date ? referenceTime : new Date(referenceTime);
-  const nowIso = now.toISOString();
-
-  // Configurable reminder window in minutes (default: 15 minutes)
   const reminderMinutes = Number(process.env.REMINDER_MINUTES_BEFORE) || 15;
   const windowEnd = new Date(now.getTime() + reminderMinutes * 60 * 1000);
-  const windowEndIso = windowEnd.toISOString();
+  const nowSql = formatSqlDatetime(now);
+  const windowEndSql = formatSqlDatetime(windowEnd);
 
   try {
     const [eligibleBookings] = await db.execute(
@@ -58,7 +57,7 @@ async function processReminders(referenceTime = new Date()) {
               OR (n.delivery_status = 'failed' AND n.attempt_count >= 3)
             )
         )`,
-      [nowIso, windowEndIso]
+      [nowSql, windowEndSql]
     );
 
     if (!eligibleBookings || eligibleBookings.length === 0) {

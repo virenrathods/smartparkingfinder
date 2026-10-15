@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { formatSqlDatetime } = require('../utils/helpers');
 
 // GET /api/admin/dashboard-stats
 async function getDashboardStats(req, res, next) {
@@ -106,7 +107,8 @@ async function getAllBookings(req, res, next) {
 async function checkInBooking(req, res, next) {
   try {
     const bookingId = req.params.id;
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const nowSql = formatSqlDatetime(nowIso);
 
     const [rows] = await db.execute('SELECT * FROM bookings WHERE id = ?', [bookingId]);
     if (rows.length === 0) {
@@ -120,13 +122,13 @@ async function checkInBooking(req, res, next) {
 
     await db.execute(
       'UPDATE bookings SET check_in_time = ? WHERE id = ?',
-      [now, bookingId]
+      [nowSql, bookingId]
     );
 
     res.status(200).json({
       success: true,
-      message: `Vehicle checked in at ${new Date(now).toLocaleTimeString()}`,
-      data: { bookingId, checkInTime: now }
+      message: `Vehicle checked in at ${new Date(nowIso).toLocaleTimeString()}`,
+      data: { bookingId, checkInTime: nowIso }
     });
   } catch (err) {
     next(err);
@@ -137,7 +139,8 @@ async function checkInBooking(req, res, next) {
 async function checkOutBooking(req, res, next) {
   try {
     const bookingId = req.params.id;
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
+    const nowSql = formatSqlDatetime(nowIso);
 
     const [rows] = await db.execute('SELECT * FROM bookings WHERE id = ?', [bookingId]);
     if (rows.length === 0) {
@@ -146,13 +149,13 @@ async function checkOutBooking(req, res, next) {
 
     await db.execute(
       "UPDATE bookings SET check_out_time = ?, booking_status = 'completed' WHERE id = ?",
-      [now, bookingId]
+      [nowSql, bookingId]
     );
 
     res.status(200).json({
       success: true,
-      message: `Vehicle checked out at ${new Date(now).toLocaleTimeString()}. Booking marked completed.`,
-      data: { bookingId, checkOutTime: now, status: 'completed' }
+      message: `Vehicle checked out at ${new Date(nowIso).toLocaleTimeString()}. Booking marked completed.`,
+      data: { bookingId, checkOutTime: nowIso, status: 'completed' }
     });
   } catch (err) {
     next(err);

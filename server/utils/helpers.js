@@ -22,7 +22,25 @@ function calculateDurationHours(startTime, endTime) {
   return Math.max(1, hours);
 }
 
+/**
+ * Format Date or ISO string into appropriate database datetime string:
+ * - MySQL: YYYY-MM-DD HH:MM:SS (strictly required by MySQL DATETIME columns)
+ * - SQLite: ISO-8601 string (preserves existing SQLite text comparison compatibility)
+ */
+function formatSqlDatetime(date, clientType = null) {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return null;
+
+  const type = clientType || (process.env.DB_CLIENT === 'mysql' || (process.env.NODE_ENV === 'production' && process.env.DB_CLIENT !== 'sqlite') ? 'mysql' : 'sqlite');
+  if (type === 'mysql') {
+    return d.toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return d.toISOString();
+}
+
 module.exports = {
   generateBookingCode,
-  calculateDurationHours
+  calculateDurationHours,
+  formatSqlDatetime
 };

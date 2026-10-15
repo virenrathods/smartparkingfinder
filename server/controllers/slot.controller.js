@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { formatSqlDatetime } = require('../utils/helpers');
 
 // GET /api/locations/:id/slots
 // Query params: startTime, endTime (ISO strings)
@@ -23,7 +24,7 @@ async function getSlotsByLocation(req, res, next) {
          WHERE location_id = ? 
            AND booking_status = 'confirmed'
            AND (start_time < ? AND end_time > ?)`,
-        [locationId, endTime, startTime]
+        [locationId, formatSqlDatetime(endTime), formatSqlDatetime(startTime)]
       );
 
       const conflictMap = new Set(conflicts.map(c => c.slot_id));

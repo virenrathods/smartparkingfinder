@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { formatSqlDatetime } = require('../utils/helpers');
 
 let isRunning = false;
 let intervalId = null;
@@ -28,9 +29,7 @@ async function processExpiredBookings(referenceTime = new Date()) {
   }
 
   isRunning = true;
-  const nowIso = referenceTime instanceof Date 
-    ? referenceTime.toISOString() 
-    : new Date(referenceTime).toISOString();
+  const nowSql = formatSqlDatetime(referenceTime);
 
   try {
     // 1. Identify reservations whose window has ended and status is still 'confirmed'
@@ -38,7 +37,7 @@ async function processExpiredBookings(referenceTime = new Date()) {
       `SELECT id, booking_code, slot_id, location_id, start_time, end_time, check_in_time, check_out_time
        FROM bookings
        WHERE booking_status = 'confirmed' AND end_time <= ?`,
-      [nowIso]
+      [nowSql]
     );
 
     if (!expiredRows || expiredRows.length === 0) {

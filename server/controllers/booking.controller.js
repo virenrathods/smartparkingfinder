@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { generateBookingCode, calculateDurationHours } = require('../utils/helpers');
+const { generateBookingCode, calculateDurationHours, formatSqlDatetime } = require('../utils/helpers');
 const { generateBookingQRCode } = require('../utils/qrGenerator');
 const emailService = require('../services/email.service');
 
@@ -110,7 +110,7 @@ async function createBooking(req, res, next) {
          AND booking_status = 'confirmed' 
          AND (start_time < ? AND end_time > ?)
        FOR UPDATE`,
-      [slot_id, endDate.toISOString(), startDate.toISOString()]
+      [slot_id, formatSqlDatetime(endDate), formatSqlDatetime(startDate)]
     );
 
     if (conflicts.length > 0) {
@@ -162,8 +162,8 @@ async function createBooking(req, res, next) {
         userId,
         location_id,
         slot_id,
-        startDate.toISOString(),
-        endDate.toISOString(),
+        formatSqlDatetime(startDate),
+        formatSqlDatetime(endDate),
         totalAmount,
         vehicle_number ? vehicle_number.trim().toUpperCase() : null,
         qrCodeDataUrl
