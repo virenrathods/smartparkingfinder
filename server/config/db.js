@@ -13,36 +13,68 @@ let sqliteTxMutex = Promise.resolve();
 
 // Initialize Database Connection
 async function initDb() {
-  const preferredClient = process.env.DB_CLIENT || 'auto';
+  const preferredClient = process.env.DB_CLIENT || (process.env.NODE_ENV === 'production' ? 'mysql' : 'auto');
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (preferredClient !== 'sqlite') {
     try {
       const mysql = require('mysql2/promise');
-      const testPool = mysql.createPool({
-        host: process.env.DB_HOST || 'localhost',
-        port: Number(process.env.DB_PORT) || 3306,
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD || '',
-        database: process.env.DB_NAME || 'smart_parking_db',
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-        enableKeepAlive: true,
-        keepAliveInitialDelay: 0
-      });
+
+      let poolConfig;
+      if (process.env.DATABASE_URL) {
+        const url = new URL(process.env.DATABASE_URL);
+        poolConfig = {
+          host: url.hostname,
+          port: Number(url.port) || 3306,
+          user: decodeURIComponent(url.username),
+          password: decodeURIComponent(url.password),
+          database: url.pathname.replace(/^\//, ''),
+          waitForConnections: true,
+          connectionLimit: 10,
+          queueLimit: 0,
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 0
+        };
+      } else {
+        poolConfig = {
+          host: process.env.DB_HOST || 'localhost',
+          port: Number(process.env.DB_PORT) || 3306,
+          user: process.env.DB_USER || 'root',
+          password: process.env.DB_PASSWORD || '',
+          database: process.env.DB_NAME || 'smart_parking_db',
+          waitForConnections: true,
+          connectionLimit: 10,
+          queueLimit: 0,
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 0
+        };
+      }
+
+      // Configure SSL for hosted cloud MySQL providers
+      const enableSsl = process.env.DB_SSL === 'true' ||
+                        process.env.DB_SSL === '1' ||
+                        (isProduction && process.env.DB_SSL !== 'false');
+
+      if (enableSsl) {
+        poolConfig.ssl = { rejectUnauthorized: false };
+      }
+
+      const testPool = mysql.createPool(poolConfig);
 
       const conn = await testPool.getConnection();
       await conn.ping();
       conn.release();
 
-      console.log('✅ Connected to MySQL database:', process.env.DB_NAME || 'smart_parking_db');
+      console.log(`✅ Connected to MySQL database at ${poolConfig.host}:${poolConfig.port}/${poolConfig.database} (SSL: ${enableSsl ? 'Active' : 'Disabled'})`);
       pool = testPool;
       activeClient = 'mysql';
       return;
     } catch (err) {
-      if (preferredClient === 'mysql') {
-        console.error('❌ Failed to connect to MySQL:', err.message);
-        throw err;
+      if (isProduction || preferredClient === 'mysql') {
+        console.error('❌ [Database] Production MySQL connection failed:', err.message);
+        console.error('❌ [Database] In production mode (NODE_ENV=production or DB_CLIENT=mysql), a genuine MySQL-compatible database is required.');
+        console.error('❌ [Database] Please configure DB_HOST, DB_USER, DB_PASSWORD, and DB_NAME (or DATABASE_URL) in your hosting environment settings.');
+        throw new Error(`Production database connection failed: ${err.message}`);
       }
       console.warn('⚠️  MySQL not reachable at localhost:3306 (' + err.message + ').');
       console.log('🔄 Activating high-performance local SQLite database with full ACID transactions.');
@@ -120,7 +152,7 @@ function initSqliteSchema(db) {
       start_time DATETIME NOT NULL,
       end_time DATETIME NOT NULL,
       total_amount REAL NOT NULL,
-      booking_status TEXT CHECK(booking_status IN ('confirmed', 'completed', 'cancelled')) DEFAULT 'confirmed' NOT NULL,
+      booking_status TEXT CHECK(booking_status IN ('confirmed', 'completed', 'cancelled', 'expired')) DEFAULT 'confirmed' NOT NULL,
       vehicle_number TEXT,
       check_in_time DATETIME,
       check_out_time DATETIME,
@@ -143,7 +175,61 @@ function initSqliteSchema(db) {
       FOREIGN KEY (slot_id) REFERENCES parking_slots(id) ON DELETE CASCADE,
       FOREIGN KEY (changed_by) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER NOT NULL,
+      booking_code TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      notification_type TEXT CHECK(notification_type IN ('confirmation', 'cancellation', 'reminder')) NOT NULL,
+      delivery_status TEXT CHECK(delivery_status IN ('sent', 'failed', 'skipped', 'pending')) DEFAULT 'pending' NOT NULL,
+      attempt_count INTEGER DEFAULT 0 NOT NULL,
+      error_message TEXT,
+      last_attempt_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE
+    );
   `);
+
+  // Ensure SQLite bookings table supports 'expired' status
+  try {
+    const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='bookings'").get();
+    if (tableInfo && !tableInfo.sql.includes('expired')) {
+      db.exec(`
+        PRAGMA foreign_keys=OFF;
+        BEGIN TRANSACTION;
+        CREATE TABLE bookings_p3 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          booking_code TEXT NOT NULL UNIQUE,
+          user_id INTEGER NOT NULL,
+          location_id INTEGER NOT NULL,
+          slot_id INTEGER NOT NULL,
+          start_time DATETIME NOT NULL,
+          end_time DATETIME NOT NULL,
+          total_amount REAL NOT NULL,
+          booking_status TEXT CHECK(booking_status IN ('confirmed', 'completed', 'cancelled', 'expired')) DEFAULT 'confirmed' NOT NULL,
+          vehicle_number TEXT,
+          check_in_time DATETIME,
+          check_out_time DATETIME,
+          qr_code_data TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id),
+          FOREIGN KEY (location_id) REFERENCES parking_locations(id),
+          FOREIGN KEY (slot_id) REFERENCES parking_slots(id)
+        );
+        INSERT INTO bookings_p3 SELECT * FROM bookings;
+        DROP TABLE bookings;
+        ALTER TABLE bookings_p3 RENAME TO bookings;
+        COMMIT;
+        PRAGMA foreign_keys=ON;
+      `);
+      console.log('✅ SQLite bookings table migrated to support "expired" status.');
+    }
+  } catch (err) {
+    console.error('SQLite schema check warning:', err.message);
+  }
 }
 
 // Unified Query and Execution Interface

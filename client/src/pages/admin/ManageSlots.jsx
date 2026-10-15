@@ -25,6 +25,7 @@ export default function ManageSlots() {
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [slots, setSlots] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState('all');
 
   // New Slot State
   const [newSlotNumber, setNewSlotNumber] = useState('');
@@ -203,13 +204,52 @@ export default function ManageSlots() {
 
       {/* Slots Grid for Admin */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span>{slots.length} configured bays at this facility</span>
-          <span>Click any bay to manually override status</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
+          {/* Type Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {[
+              { id: 'all', label: 'All Bays' },
+              { id: 'car', label: 'Cars' },
+              { id: 'ev', label: 'EV Bays' },
+              { id: 'accessible', label: 'Accessible' },
+              { id: 'bike', label: 'Bikes' },
+            ].map((item) => {
+              const count = item.id === 'all'
+                ? slots.length
+                : slots.filter((s) => s.slot_type === item.id).length;
+              if (count === 0 && item.id !== 'all') return null;
+              const isActive = typeFilter === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTypeFilter(item.id)}
+                  className={`px-3 py-1.5 rounded-xl font-medium transition ${
+                    isActive
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
+                      : 'bg-slate-950/70 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <span className={`ml-1.5 text-[10px] px-1.5 py-0.2 rounded-md ${
+                    isActive ? 'bg-purple-700 text-purple-100' : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="text-xs text-slate-400">
+            <span>Click any bay to manually override status</span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-          {slots.map((slot) => {
+          {slots
+            .filter((s) => typeFilter === 'all' || s.slot_type === typeFilter)
+            .map((slot) => {
             const isAvail = slot.status === 'available';
             const isMaint = slot.status === 'maintenance';
             const isOcc = slot.status === 'occupied';

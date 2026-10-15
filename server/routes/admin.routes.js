@@ -12,5 +12,7 @@ router.get('/bookings', adminController.getAllBookings);
 router.patch('/bookings/:id/check-in', adminController.checkInBooking);
 router.patch('/bookings/:id/check-out', adminController.checkOutBooking);
 router.get('/reports', adminController.getReports);
+router.post('/lifecycle-sweep', adminController.triggerLifecycleSweep);
+router.get('/notifications', adminController.getNotifications);
 
 module.exports = router;

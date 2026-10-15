@@ -13,24 +13,34 @@ import {
   ShieldCheck, 
   CheckCircle2, 
   QrCode,
-  ArrowRight
+  ArrowRight,
+  Mail
 } from 'lucide-react';
 
-export default function BookingModal({ location, slot, onClose, onBookingSuccess }) {
+export default function BookingModal({
+  location,
+  slot,
+  initialDate,
+  initialTime,
+  initialDuration,
+  onClose,
+  onBookingSuccess
+}) {
   const { isAuthenticated } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
-  // Initialize arrival date/time to nearest next hour
+  // Initialize arrival date/time with inherited values or nearest next hour
   const now = new Date();
   now.setMinutes(0, 0, 0);
   now.setHours(now.getHours() + 1);
 
-  const [dateStr, setDateStr] = useState(now.toISOString().split('T')[0]);
-  const [timeStr, setTimeStr] = useState(
-    `${String(now.getHours()).padStart(2, '0')}:00`
-  );
-  const [durationHours, setDurationHours] = useState(2);
+  const defaultDate = now.toISOString().split('T')[0];
+  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:00`;
+
+  const [dateStr, setDateStr] = useState(initialDate || defaultDate);
+  const [timeStr, setTimeStr] = useState(initialTime || defaultTime);
+  const [durationHours, setDurationHours] = useState(Number(initialDuration) || 2);
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState(null);
@@ -50,16 +60,22 @@ export default function BookingModal({ location, slot, onClose, onBookingSuccess
     try {
       setSubmitting(true);
 
-      const [hours, minutes] = timeStr.split(':').map(Number);
       const startDateTime = new Date(`${dateStr}T${timeStr}:00`);
       const endDateTime = new Date(startDateTime.getTime() + durationHours * 60 * 60 * 1000);
+
+      // Validate arrival time is in future (allowing 5 minute grace buffer for clock skew)
+      if (startDateTime.getTime() < Date.now() - 5 * 60 * 1000) {
+        toast.error('Reservation start time cannot be in the past.');
+        setSubmitting(false);
+        return;
+      }
 
       const res = await api.post('/bookings', {
         location_id: location.id,
         slot_id: slot.id,
         start_time: startDateTime.toISOString(),
         end_time: endDateTime.toISOString(),
-        vehicle_number: vehicleNumber
+        vehicle_number: vehicleNumber.trim().toUpperCase()
       });
 
       if (res.success && res.data) {
@@ -154,6 +170,39 @@ export default function BookingModal({ location, slot, onClose, onBookingSuccess
               </div>
             </div>
 
+            {/* Email Notification Status Feedback */}
+            {confirmedBooking.notification?.success ? (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3 text-left">
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-emerald-300">Confirmation Email Sent</p>
+                  <p className="text-[11px] text-slate-400">A digital pass has been dispatched to your email address.</p>
+                </div>
+              </div>
+            ) : confirmedBooking.notification?.skipped ? (
+              <div className="p-3 bg-slate-800/40 border border-slate-700/50 rounded-2xl flex items-center gap-3 text-left">
+                <div className="p-2 bg-slate-800 text-slate-400 rounded-xl shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-300">Reservation Confirmed & Saved</p>
+                  <p className="text-[11px] text-slate-400">Email dispatch was skipped (SMTP not configured). Your pass is fully active above.</p>
+                </div>
+              </div>
+            ) : confirmedBooking.notification?.success === false ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center gap-3 text-left">
+                <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-amber-300">Reservation Confirmed</p>
+                  <p className="text-[11px] text-slate-400">Your pass is secured in our system. Email transport encountered a delay, but your ticket is fully valid.</p>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => navigate('/my-bookings')}
@@ -220,8 +269,8 @@ export default function BookingModal({ location, slot, onClose, onBookingSuccess
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
                 Expected Duration (Hours)
               </label>
-              <div className="grid grid-cols-5 gap-2">
-                {[1, 2, 3, 4, 8].map((h) => (
+              <div className="grid grid-cols-6 gap-2">
+                {[1, 2, 3, 4, 6, 8].map((h) => (
                   <button
                     key={h}
                     type="button"
@@ -247,7 +296,7 @@ export default function BookingModal({ location, slot, onClose, onBookingSuccess
                 type="text"
                 placeholder="e.g. NY-9842-AB"
                 value={vehicleNumber}
-                onChange={(e) => setVehicleNumber(e.target.value)}
+                onChange={(e) => setVehicleNumber(e.target.value.toUpperCase())}
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-600 uppercase focus:outline-none focus:border-emerald-500"
               />
             </div>

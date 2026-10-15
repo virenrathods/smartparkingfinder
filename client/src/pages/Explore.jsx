@@ -4,16 +4,19 @@ import { api } from '../services/api';
 import LocationCard from '../components/parking/LocationCard';
 import FilterBar from '../components/parking/FilterBar';
 import ParkingMap from '../components/map/ParkingMap';
-import { Compass, AlertCircle, RefreshCw } from 'lucide-react';
+import { Compass, AlertCircle, RefreshCw, MapPin } from 'lucide-react';
 
 export default function Explore() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialSearch = searchParams.get('search') || '';
+  const initialType = searchParams.get('type') || '';
+  const initialMaxPrice = searchParams.get('maxPrice') ? Number(searchParams.get('maxPrice')) : 15;
 
   const [filters, setFilters] = useState({
     search: initialSearch,
-    maxPrice: 15,
-    availableOnly: false
+    maxPrice: initialMaxPrice,
+    availableOnly: false,
+    slotType: initialType,
   });
 
   const [locations, setLocations] = useState([]);
@@ -46,6 +49,16 @@ export default function Explore() {
     fetchLocations();
   }, [filters]);
 
+  const handleReset = () => {
+    setFilters({
+      search: '',
+      maxPrice: 15,
+      availableOnly: false,
+      slotType: '',
+    });
+    setSearchParams({});
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Page Header */}
@@ -73,7 +86,7 @@ export default function Explore() {
       <FilterBar
         filters={filters}
         setFilters={setFilters}
-        onReset={() => setFilters({ search: '', maxPrice: 15, availableOnly: false })}
+        onReset={handleReset}
       />
 
       {/* Main Split Layout: Left Locations List, Right Map */}
@@ -83,7 +96,7 @@ export default function Explore() {
           <div className="flex items-center justify-between text-xs text-slate-400 px-1">
             <span>Showing {locations.length} verified facilities</span>
             {filters.availableOnly && (
-              <span className="text-emerald-400">Filtering: Available slots only</span>
+              <span className="text-emerald-400 font-semibold">Filtering: Available slots only</span>
             )}
           </div>
 
@@ -101,7 +114,7 @@ export default function Explore() {
                 Try widening your search keywords or increasing the maximum hourly price slider.
               </p>
               <button
-                onClick={() => setFilters({ search: '', maxPrice: 15, availableOnly: false })}
+                onClick={handleReset}
                 className="mt-2 px-4 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition"
               >
                 Reset Filters

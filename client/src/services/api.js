@@ -1,4 +1,11 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+// Resolve and normalize API Base URL
+function getApiBaseUrl() {
+  const rawUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  const cleanUrl = rawUrl.trim().replace(/\/+$/, '');
+  return cleanUrl.endsWith('/api') ? cleanUrl : `${cleanUrl}/api`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
@@ -14,7 +21,8 @@ async function request(endpoint, options = {}) {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    const formattedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const response = await fetch(`${API_BASE_URL}${formattedEndpoint}`, config);
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -26,6 +34,12 @@ async function request(endpoint, options = {}) {
 
     return data;
   } catch (err) {
+    if (err.name === 'TypeError' && err.message && err.message.toLowerCase().includes('fetch')) {
+      const networkError = new Error('Cannot reach the parking service. The server may be starting up or currently offline.');
+      networkError.status = 503;
+      networkError.isOffline = true;
+      throw networkError;
+    }
     throw err;
   }
 }

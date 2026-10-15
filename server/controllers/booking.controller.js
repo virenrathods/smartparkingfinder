@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { generateBookingCode, calculateDurationHours } = require('../utils/helpers');
 const { generateBookingQRCode } = require('../utils/qrGenerator');
+const emailService = require('../services/email.service');
 
 // POST /api/bookings
 async function createBooking(req, res, next) {
@@ -22,14 +23,40 @@ async function createBooking(req, res, next) {
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid date/time format.'
+        message: 'Invalid date/time format. Please provide valid ISO-8601 timestamps.'
       });
     }
 
-    if (startDate >= endDate) {
+    const nowEpoch = Date.now();
+    // Allow 5-minute buffer for clock skew / submission latency
+    if (startDate.getTime() < nowEpoch - 5 * 60 * 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reservation start time cannot be in the past.'
+      });
+    }
+
+    if (endDate.getTime() <= startDate.getTime()) {
       return res.status(400).json({
         success: false,
         message: 'End time must be after start time.'
+      });
+    }
+
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const durationHours = durationMs / (1000 * 60 * 60);
+
+    if (durationHours < 0.5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Minimum booking duration is 30 minutes.'
+      });
+    }
+
+    if (durationHours > 72) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum single booking duration cannot exceed 72 hours.'
       });
     }
 
@@ -146,6 +173,38 @@ async function createBooking(req, res, next) {
     // Commit transaction
     await connection.commit();
 
+    // Fetch user details for confirmation email
+    let userDetails = { full_name: 'Driver', email: req.user.email };
+    try {
+      const [userRows] = await db.execute('SELECT full_name, email FROM users WHERE id = ?', [userId]);
+      if (userRows && userRows.length > 0) {
+        userDetails = userRows[0];
+      }
+    } catch (uErr) {
+      console.warn('[Booking] Could not fetch user details for email:', uErr.message);
+    }
+
+    // Safely dispatch confirmation email without blocking or failing booking
+    let notificationInfo = null;
+    try {
+      notificationInfo = await emailService.sendBookingConfirmation({
+        booking: {
+          id: bookingResult.insertId,
+          booking_code: bookingCode,
+          start_time: startDate.toISOString(),
+          end_time: endDate.toISOString(),
+          total_amount: totalAmount,
+          vehicle_number: vehicle_number || null
+        },
+        user: userDetails,
+        location,
+        slot
+      });
+    } catch (emailErr) {
+      console.error('[Booking] Non-fatal confirmation email error:', emailErr.message);
+      notificationInfo = { success: false, error: emailErr.message };
+    }
+
     res.status(201).json({
       success: true,
       message: 'Parking slot successfully reserved!',
@@ -160,7 +219,8 @@ async function createBooking(req, res, next) {
         hourlyRate: location.hourly_rate,
         totalAmount,
         vehicleNumber: vehicle_number || null,
-        qrCodeDataUrl
+        qrCodeDataUrl,
+        notification: notificationInfo
       }
     });
   } catch (err) {
@@ -182,6 +242,7 @@ async function getMyBookings(req, res, next) {
         b.booking_status, b.vehicle_number, b.check_in_time, b.check_out_time,
         b.qr_code_data, b.created_at,
         l.id AS location_id, l.name AS location_name, l.address AS location_address, l.city,
+        l.latitude, l.longitude,
         s.id AS slot_id, s.slot_number, s.slot_type
       FROM bookings b
       JOIN parking_locations l ON b.location_id = l.id
@@ -213,6 +274,7 @@ async function getBookingById(req, res, next) {
         b.*,
         u.full_name AS user_name, u.email AS user_email, u.phone AS user_phone,
         l.name AS location_name, l.address AS location_address, l.city, l.hourly_rate,
+        l.latitude, l.longitude,
         s.slot_number, s.slot_type
       FROM bookings b
       JOIN users u ON b.user_id = u.id
@@ -274,10 +336,36 @@ async function cancelBooking(req, res, next) {
       [bookingId]
     );
 
+    // Asynchronously dispatch cancellation confirmation email
+    let notificationInfo = null;
+    try {
+      const [details] = await db.execute(
+        `SELECT b.*, u.full_name, u.email, l.name AS location_name, l.address, l.city, s.slot_number
+         FROM bookings b
+         JOIN users u ON b.user_id = u.id
+         JOIN parking_locations l ON b.location_id = l.id
+         JOIN parking_slots s ON b.slot_id = s.id
+         WHERE b.id = ?`,
+        [bookingId]
+      );
+      if (details && details.length > 0) {
+        const b = details[0];
+        notificationInfo = await emailService.sendCancellationEmail({
+          booking: b,
+          user: { full_name: b.full_name, email: b.email },
+          location: { name: b.location_name, address: b.address, city: b.city },
+          slot: { slot_number: b.slot_number }
+        });
+      }
+    } catch (emailErr) {
+      console.error('[Booking] Non-fatal cancellation email error:', emailErr.message);
+      notificationInfo = { success: false, error: emailErr.message };
+    }
+
     res.status(200).json({
       success: true,
       message: 'Booking cancelled successfully. Slot is now released and available for other drivers.',
-      data: { bookingId, status: 'cancelled' }
+      data: { bookingId, status: 'cancelled', notification: notificationInfo }
     });
   } catch (err) {
     next(err);

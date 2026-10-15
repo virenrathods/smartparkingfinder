@@ -60,7 +60,8 @@ async function getAllBookings(req, res, next) {
         b.booking_status, b.vehicle_number, b.check_in_time, b.check_out_time,
         b.qr_code_data, b.created_at,
         u.id AS user_id, u.full_name AS user_name, u.email AS user_email, u.phone AS user_phone,
-        l.id AS location_id, l.name AS location_name, l.city,
+        l.id AS location_id, l.name AS location_name, l.city, l.address AS location_address,
+        l.latitude, l.longitude,
         s.id AS slot_id, s.slot_number, s.slot_type
       FROM bookings b
       JOIN users u ON b.user_id = u.id
@@ -210,10 +211,109 @@ async function getReports(req, res, next) {
   }
 }
 
+// POST /api/admin/lifecycle-sweep
+async function triggerLifecycleSweep(req, res, next) {
+  try {
+    const { processExpiredBookings } = require('../services/lifecycle.service');
+    const result = await processExpiredBookings();
+    res.status(200).json({
+      success: true,
+      message: `Lifecycle sweep completed. Processed ${result.processed || 0} expired booking(s).`,
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GET /api/admin/notifications
+async function getNotifications(req, res, next) {
+  try {
+    const { status, type, bookingCode, limit = 50, page = 1 } = req.query;
+
+    let query = `
+      SELECT
+        id,
+        booking_id,
+        booking_code,
+        recipient_email,
+        notification_type,
+        delivery_status,
+        attempt_count,
+        error_message,
+        last_attempt_at,
+        created_at,
+        updated_at
+      FROM notifications
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (status) {
+      query += ` AND delivery_status = ?`;
+      params.push(status);
+    }
+    if (type) {
+      query += ` AND notification_type = ?`;
+      params.push(type);
+    }
+    if (bookingCode) {
+      query += ` AND booking_code LIKE ?`;
+      params.push(`%${bookingCode.trim()}%`);
+    }
+
+    query += ` ORDER BY last_attempt_at DESC LIMIT ? OFFSET ?`;
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const parsedOffset = (Math.max(parseInt(page, 10) || 1, 1) - 1) * parsedLimit;
+    params.push(parsedLimit, parsedOffset);
+
+    const [rows] = await db.execute(query, params);
+
+    // Map rows to include 'actionRequired' flag and sanitize recipient email partially (e.g. j***@example.com)
+    const sanitizedRows = rows.map(r => {
+      let maskedEmail = r.recipient_email;
+      if (maskedEmail && maskedEmail.includes('@')) {
+        const parts = maskedEmail.split('@');
+        const userPart = parts[0];
+        const domain = parts[1];
+        maskedEmail = userPart.charAt(0) + '***@' + domain;
+      }
+      return {
+        id: r.id,
+        bookingId: r.booking_id,
+        bookingCode: r.booking_code,
+        recipientEmail: maskedEmail,
+        notificationType: r.notification_type,
+        deliveryStatus: r.delivery_status,
+        attemptCount: Number(r.attempt_count),
+        errorMessage: r.error_message,
+        lastAttemptAt: r.last_attempt_at,
+        createdAt: r.created_at,
+        actionRequired: r.delivery_status === 'failed'
+      };
+    });
+
+    const [countRows] = await db.execute(`SELECT COUNT(*) AS total FROM notifications`);
+    const totalCount = Number(countRows[0]?.total || 0);
+
+    res.status(200).json({
+      success: true,
+      count: sanitizedRows.length,
+      total: totalCount,
+      page: Number(page) || 1,
+      data: sanitizedRows
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getDashboardStats,
   getAllBookings,
   checkInBooking,
   checkOutBooking,
-  getReports
+  getReports,
+  triggerLifecycleSweep,
+  getNotifications
 };

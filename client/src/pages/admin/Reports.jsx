@@ -98,13 +98,34 @@ export default function Reports() {
 
                   {/* Progress Bar */}
                   <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs text-slate-400">
-                      <span>Occupancy Utilization</span>
+                    <div className="flex justify-between items-center text-xs text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <span>Occupancy Utilization</span>
+                        {ratePct >= 85 ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            High Demand
+                          </span>
+                        ) : ratePct >= 50 ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Moderate
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Ample Slots
+                          </span>
+                        )}
+                      </div>
                       <span className="font-bold text-white">{ratePct}%</span>
                     </div>
                     <div className="w-full h-2.5 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
                       <div
-                        className="h-full bg-gradient-to-r from-emerald-500 via-sky-400 to-indigo-500 transition-all duration-500"
+                        className={`h-full transition-all duration-500 ${
+                          ratePct >= 85
+                            ? 'bg-gradient-to-r from-amber-500 to-rose-500'
+                            : ratePct >= 50
+                            ? 'bg-gradient-to-r from-emerald-500 to-amber-500'
+                            : 'bg-emerald-500'
+                        }`}
                         style={{ width: `${ratePct}%` }}
                       ></div>
                     </div>

@@ -282,6 +282,9 @@ export default function LocationDetails() {
         <BookingModal
           location={location}
           slot={selectedSlot}
+          initialDate={dateStr}
+          initialTime={timeStr}
+          initialDuration={durationHours}
           onClose={() => {
             setShowBookingModal(false);
             setSelectedSlot(null);

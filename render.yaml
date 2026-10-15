@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: smart-parking-finder-api
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm run migrate && npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "5000"
+      - key: DB_CLIENT
+        value: "mysql"
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: REMINDER_MINUTES_BEFORE
+        value: "15"
+      - key: REMINDER_CHECK_INTERVAL_SECONDS
+        value: "60"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        value: '"Smart Parking Finder" <no-reply@parkingfinder.com>'

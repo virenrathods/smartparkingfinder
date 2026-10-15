@@ -1,13 +1,20 @@
 function errorHandler(err, req, res, next) {
   console.error('Unhandled Server Error:', err);
 
-  const statusCode = err.statusCode || err.status || 500;
-  const message = err.message || 'Internal Server Error';
+  let statusCode = err.statusCode || err.status || 500;
+  if (err.message && err.message.includes('CORS policy')) {
+    statusCode = 403;
+  }
+
+  let message = err.message || 'Internal Server Error';
+  if (process.env.NODE_ENV === 'production' && statusCode === 500) {
+    message = 'An unexpected server error occurred. Please try again later.';
+  }
 
   res.status(statusCode).json({
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
   });
 }
 

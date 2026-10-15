@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     start_time DATETIME NOT NULL,
     end_time DATETIME NOT NULL,
     total_amount DECIMAL(8, 2) NOT NULL,
-    booking_status ENUM('confirmed', 'completed', 'cancelled') DEFAULT 'confirmed' NOT NULL,
+    booking_status ENUM('confirmed', 'completed', 'cancelled', 'expired') DEFAULT 'confirmed' NOT NULL,
     vehicle_number VARCHAR(30) NULL,
     check_in_time DATETIME NULL,
     check_out_time DATETIME NULL,
@@ -82,4 +82,21 @@ CREATE TABLE IF NOT EXISTS slot_audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (slot_id) REFERENCES parking_slots(id) ON DELETE CASCADE,
     FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT NOT NULL,
+    booking_code VARCHAR(32) NOT NULL,
+    recipient_email VARCHAR(191) NOT NULL,
+    notification_type ENUM('confirmation', 'cancellation', 'reminder') NOT NULL,
+    delivery_status ENUM('sent', 'failed', 'skipped', 'pending') DEFAULT 'pending' NOT NULL,
+    attempt_count INT DEFAULT 0 NOT NULL,
+    error_message TEXT NULL,
+    last_attempt_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+    INDEX idx_notif_booking (booking_id),
+    INDEX idx_notif_type_status (notification_type, delivery_status)
 ) ENGINE=InnoDB;
